@@ -6,7 +6,6 @@ proxy_read_timeout 900;
 
 proxy_set_header X-Real-IP  $remote_addr;
 proxy_set_header X-Forwarded-For $remote_addr;
-proxy_set_header X-Atomshare-Real-IP $remote_addr;
 proxy_set_header Host $host;
 proxy_set_header X-Forwarded-Proto $scheme;'''
 
@@ -32,6 +31,9 @@ http {
     types_hash_max_size 2048;
     server_tokens off;
 
+    server_names_hash_max_size 1024;
+    server_names_hash_bucket_size 64;
+
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
@@ -45,7 +47,7 @@ http {
     ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH:ECDHE-RSA-AES128-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA128:DHE-RSA-AES128-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES128-GCM-SHA128:ECDHE-RSA-AES128-SHA384:ECDHE-RSA-AES128-SHA128:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES128-SHA128:DHE-RSA-AES128-SHA128:DHE-RSA-AES128-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA384:AES128-GCM-SHA128:AES128-SHA128:AES128-SHA128:AES128-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
     ssl_prefer_server_ciphers on;
     ssl_session_cache shared:SSL:10m;
-    ssl_session_tickets off;
+    #ssl_session_tickets off;
 
     add_header X-Content-Type-Options nosniff;
 
