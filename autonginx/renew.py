@@ -80,7 +80,7 @@ def _acme_make_cert(hostnames):
     f.close()
     os.unlink(config_path)
 
-    intermediate = open('letsencrypt-x1-crosssigned.pem').read()
+    intermediate = open('letsencrypt-x3-crosssigned.pem').read()
     account_key = misc_dir + '/autocerts/account.key'
     out = open(cert_path + '_tmp', 'w')
     subprocess.check_call(
