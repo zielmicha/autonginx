@@ -7,29 +7,13 @@ import collections
 import os
 import sys
 import binascii
+from typing import List
 
-misc_dir = None
-challenge_dir = None
-auto_certificates = []
+misc_dir = ''
+reload_cmd = ''
+auto_certificates = [] # type: List[autonginx.certs.Certificate]
 
-def _gen_key(path):
-    out = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    subprocess.check_call(['openssl', 'genrsa', '4096'], stdout=out)
-    os.close(out)
-
-def _setup_acme():
-    global challenge_dir
-
-    challenge_dir = misc_dir + '/challenges'
-    if not os.path.exists(challenge_dir): os.mkdir(challenge_dir)
-    os.chmod(misc_dir, 0o755)
-    os.chmod(challenge_dir, 0o755)
-
-    account_key = misc_dir + '/autocerts/account.key'
-
-    if not os.path.exists(account_key):
-        print('Generating ACME account key...', file=sys.stderr)
-        _gen_key(account_key)
+ACME_SH = os.path.dirname(__file__) + '/../acme.sh/acme.sh'
 
 def _find_auto_cert(hostname):
     for cert in auto_certificates:
@@ -62,40 +46,33 @@ def _acme_make_cert(hostnames):
     id = binascii.hexlify(os.urandom(8)).decode()
     key_path = misc_dir + '/autocerts/' + id + '.key'
     cert_path = misc_dir + '/autocerts/' + id + '.crt'
-    csr_path = misc_dir + '/autocerts/' + id + '.csr'
-    config_path = misc_dir + '/autocerts/' + id + '.config'
 
-    _gen_key(key_path)
+    challenge_dir = misc_dir + '/challenges'
+    if not os.path.exists(challenge_dir): os.mkdir(challenge_dir)
+    os.chmod(misc_dir, 0o755)
+    os.chmod(challenge_dir, 0o755)
 
-    cn = hostnames[0]
-    cert_config = open('/etc/ssl/openssl.cnf').read()
-    cert_config += '\n[SAN]\nsubjectAltName=%s' % ','.join( 'DNS:%s' % hostname for hostname in hostnames )
-    with open(config_path, 'w') as f:
-        f.write(cert_config)
+    cmd = [ACME_SH, '--issue']
+    for hostname in hostnames: cmd += ['-d', hostname]
+    cmd += ['-w', challenge_dir]
 
-    cmd = ['openssl', 'req', '-new', '-sha256', '-key', key_path, '-subj', '/CN=%s' % cn, '-reqexts', 'SAN', '-config', config_path]
+    subprocess.check_call(cmd)
 
-    f = open(csr_path, 'w')
-    subprocess.check_call(cmd, stdout=f)
-    f.close()
-    os.unlink(config_path)
+    cmd = [ACME_SH, '--install-cert']
+    for hostname in hostnames: cmd += ['-d', hostname]
 
-    intermediate = open('letsencrypt-x3-crosssigned.pem').read()
-    account_key = misc_dir + '/autocerts/account.key'
-    out = open(cert_path + '_tmp', 'w')
-    subprocess.check_call(
-        ['python', 'acme_tiny.py', '--account-key', account_key, '--csr', csr_path, '--acme-dir', misc_dir + '/challenges'],
-        stdout=out)
-    out.write('\n' + intermediate)
-    out.close()
-    os.rename(cert_path + '_tmp', cert_path)
-    print('Certificate ready!')
+    cmd += [
+        '--key-file', key_path,
+        '--fullchain-file', cert_path,
+        '--reloadcmd', reload_cmd,
+    ]
+    subprocess.check_call(cmd)
 
-def renew(misc_dir_, reload_cmd):
-    global misc_dir
-    misc_dir = misc_dir_
-
+def renew():
     auto_certs_dir = misc_dir + '/autocerts'
+
+    # first, renew existing certificates with acme.sh
+    subprocess.check_call([ACME_SH, '--cron'])
 
     if not os.path.exists(auto_certs_dir):
         os.mkdir(auto_certs_dir)
@@ -110,20 +87,19 @@ def renew(misc_dir_, reload_cmd):
     load_auto_certs()
 
     hostnames = set(open(misc_dir + '/hostnames.txt', 'r').read().splitlines())
-    bad_certs = set()
+    bad_certs = list()
     for hostname in hostnames:
         if not _try_fix_cert(hostname) and '*' not in hostname:
-            bad_certs.add(hostname)
+            bad_certs.append(hostname)
 
     if not bad_certs:
         #print('No expiring or incorrent certificates.')
         return
 
-    bad_certs = list(sorted(bad_certs, key=autonginx.hostname_sort_order))
+    bad_certs.sort(key=autonginx.hostname_sort_order)
 
     print('Incorrect or expiring certificates: %s' % ', '.join(bad_certs), file=sys.stderr)
 
-    _setup_acme()
     _acme_make_cert(bad_certs)
 
     load_auto_certs()
@@ -135,6 +111,8 @@ def renew(misc_dir_, reload_cmd):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--misc-dir', default='/etc/nginx/misc')
-    parser.add_argument('--reload-cmd', default='nginx -s reload')
+    parser.add_argument('--reload-cmd', default='killall -HUP nginx')
     ns = parser.parse_args()
-    renew(ns.misc_dir, ns.reload_cmd)
+    misc_dir = ns.misc_dir
+    reload_cmd = ns.reload_cmd
+    renew()

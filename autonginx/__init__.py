@@ -6,14 +6,15 @@ import datetime
 import sys
 import io
 import subprocess
+from typing import List, Dict, Set
 
-_certificates = []
+_certificates = [] # type: List[certs.Certificate]
 _certificate_keys = {}
-_certificate_by_hostname = {}
+_certificate_by_hostname = {} # type: Dict[str, certs.Certificate]
 _sites = []
 _misc_dir = None
-_collisions = set()
-_bad_hostnames = set()
+_collisions = set() # type: Set
+_bad_hostnames = set() # type: Set[str]
 
 def load_certificate(path, key=None):
     crt = certs.load_cert(path)
@@ -33,6 +34,13 @@ def find_certificates(pattern):
     for path in matches:
         load_certificate(path)
 
+def find_acmesh_certificates():
+    keys = glob.glob(os.path.expanduser('~/.acme.sh/*/*.key'))
+    for key in keys:
+        crt = key[:-4] + '.cer'
+        if os.path.exists(crt):
+            load_certificate(crt)
+
 def _check_collision(addr):
     if addr in _collisions:
         raise ValueError('address %s used twice' % (addr, ))
@@ -41,8 +49,8 @@ def _check_collision(addr):
 class Location:
     def __init__(self, prefix):
         self.location = prefix
-        self.lines = []
-        self.raw = []
+        self.lines = [] # type: List[str]
+        self.raw = [] # type: List[str]
 
     def proxy(self, *, location='/', to, headers=None, proxy_redirect=None):
         self.lines += fragments.proxy.splitlines()
@@ -152,7 +160,7 @@ class Site:
             lines.append('listen 80;')
             lines += [
                 'location /.well-known/acme-challenge/ {',
-                '    alias %s/challenges/;' % q(_misc_dir),
+                '    root %s/challenges/;' % q(_misc_dir),
                 '}'
             ]
 
@@ -288,6 +296,7 @@ def target_simple_file(filename, misc_dir):
     if not os.path.exists(_misc_dir):
         os.mkdir(_misc_dir, 0o700)
 
+    find_acmesh_certificates()
     find_certificates(_misc_dir + '/autocerts/*.crt')
 
     hostnames = _get_hostnames()
