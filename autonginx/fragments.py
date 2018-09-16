@@ -4,6 +4,7 @@ proxy_set_header Connection $connection_upgrade;
 proxy_http_version 1.1;
 proxy_read_timeout 900;
 
+#proxy_ssl_server_name on;
 proxy_set_header X-Real-IP  $remote_addr;
 proxy_set_header X-Forwarded-For $remote_addr;
 proxy_set_header Host $host;

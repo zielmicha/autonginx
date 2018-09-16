@@ -42,6 +42,7 @@ class Location:
     def __init__(self, prefix):
         self.location = prefix
         self.lines = []
+        self.raw = []
 
     def proxy(self, *, location='/', to, headers=None, proxy_redirect=None):
         self.lines += fragments.proxy.splitlines()
@@ -58,12 +59,14 @@ class Location:
     def return_code(self, code):
         self.lines.append('return %d;' % code)
 
-    def files(self, path):
+    def files(self, path, allow_index=False):
         self.lines.append('alias %s;' % q(path))
+        if allow_index:
+            self.lines.append('autoindex on;')
 
     def _generate(self):
         lines = [ 'location %s {' % q(self.location) ]
-        lines += [ '    ' + line for line in self.lines ]
+        lines += [ '    ' + line for line in self.lines + self.raw ]
         lines.append('}')
         return lines
 
@@ -91,6 +94,7 @@ class Site:
         self.rewrites = []
         self.locations = []
         self.locations_by_key = {}
+        self.raw = []
 
         if type(name) is list:
             self.all_names = list(name)
@@ -142,6 +146,7 @@ class Site:
 
     def _generate_one(self, name):
         lines = ['server_name %s;' % q(name)]
+        lines += self.raw
         if (self.no_tls or not self.auto_tls) and not self.tls_only:
             _check_collision((80, name))
             lines.append('listen 80;')

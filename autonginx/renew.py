@@ -112,7 +112,7 @@ def renew(misc_dir_, reload_cmd):
     hostnames = set(open(misc_dir + '/hostnames.txt', 'r').read().splitlines())
     bad_certs = set()
     for hostname in hostnames:
-        if not _try_fix_cert(hostname):
+        if not _try_fix_cert(hostname) and '*' not in hostname:
             bad_certs.add(hostname)
 
     if not bad_certs:
