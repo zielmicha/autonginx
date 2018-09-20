@@ -37,9 +37,9 @@ def find_certificates(pattern):
 def find_acmesh_certificates():
     keys = glob.glob(os.path.expanduser('~/.acme.sh/*/*.key'))
     for key in keys:
-        crt = key[:-4] + '.cer'
+        crt = os.path.dirname(key) + '/fullchain.cer'
         if os.path.exists(crt):
-            load_certificate(crt)
+            load_certificate(crt, key=key)
 
 def _check_collision(addr):
     if addr in _collisions:
