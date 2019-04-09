@@ -16,6 +16,8 @@ _misc_dir = None
 _collisions = set() # type: Set
 _bad_hostnames = set() # type: Set[str]
 
+separate_logs = True
+
 def load_certificate(path, key=None):
     crt = certs.load_cert(path)
     if not key:
@@ -56,10 +58,14 @@ class Location:
         self.lines += fragments.proxy.splitlines()
         for k, v in (headers or {}).items():
             self.lines.append('proxy_set_header %s %s;' % (q(k), qval(v)))
-        if proxy_redirect:
-            self.lines.append('proxy_redirect %s %s;' % (q(proxy_redirect[0]), q(proxy_redirect[1])))
 
         self.lines.append('proxy_pass %s;' % q(to))
+
+        if proxy_redirect:
+            if proxy_redirect is True:
+                self.lines.append('proxy_redirect default;')
+            else:
+                self.lines.append('proxy_redirect %s %s;' % (q(proxy_redirect[0]), q(proxy_redirect[1])))
 
     def set_header(self, k, v):
         self.lines.append('add_header %s %s;' % (q(k), qval(v)))
@@ -78,10 +84,11 @@ class Location:
         lines.append('}')
         return lines
 
-    def rewrite(self, *, regex, to, permanent=False):
+    def rewrite(self, *, regex, to, permanent=False, redirect=False):
         s = 'rewrite %s %s' % (q(regex), q(to))
         if permanent:
             s += ' permanent'
+        if redirect: s += ' redirect'
         self.lines.append(s + ';')
 
 def q(s):
@@ -98,7 +105,7 @@ def qval(s):
         return s
 
 class Site:
-    def __init__(self, name, aliases=[], no_tls=False, auto_tls=True, tls_only=False, hsts=False, auto_cert=True):
+    def __init__(self, name, aliases=[], no_tls=False, auto_tls=True, tls_only=False, hsts=False, auto_cert=True, log_name=None):
         self.rewrites = []
         self.locations = []
         self.locations_by_key = {}
@@ -111,6 +118,7 @@ class Site:
             self.all_names = [name]
 
         self.name = name
+        self.log_name = log_name or name
         self.no_tls = no_tls
         self.auto_tls = auto_tls and not no_tls and not tls_only
         self.tls_only = tls_only
@@ -121,10 +129,10 @@ class Site:
         assert not (self.tls_only and self.no_tls)
 
         for alias in aliases:
-            redirect(alias, self.base_url, no_tls=no_tls, auto_tls=auto_tls, permanent=True, auto_cert=auto_cert)
+            redirect(alias, self.base_url, log_name=name, no_tls=no_tls, auto_tls=auto_tls, permanent=True, auto_cert=auto_cert)
 
         if self.auto_tls:
-            redirect(name, self.base_url, no_tls=True, permanent=True, auto_cert=auto_cert)
+            redirect(name, self.base_url, log_name=name, no_tls=True, permanent=True, auto_cert=auto_cert)
 
         _sites.append(self)
 
@@ -158,10 +166,17 @@ class Site:
         if (self.no_tls or not self.auto_tls) and not self.tls_only:
             _check_collision((80, name))
             lines.append('listen 80;')
+
             lines += [
                 'location /.well-known/acme-challenge/ {',
                 '    root %s/challenges/;' % q(_misc_dir),
                 '}'
+             ]
+
+        if separate_logs:
+            lines += [
+                'access_log /var/log/nginx/%s_access.log main;' % q(self.log_name),
+                'error_log /var/log/nginx/%s_error.log;' % q(self.log_name),
             ]
 
         if not self.no_tls:
@@ -170,6 +185,9 @@ class Site:
             crt, key = _certificate_by_hostname[name]
             lines.append('ssl_certificate %s;' % q(crt))
             lines.append('ssl_certificate_key %s;' % q(key))
+
+        if self.hsts:
+            lines.append('add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";')
 
         lines += self.rewrites
         for location in self.locations:
@@ -208,8 +226,8 @@ class DefaultSite(Site):
 
         return _make_server(lines)
 
-def redirect(hostname, target_url, *, no_tls=False, permanent=False, auto_tls=True, tls_only=False, auto_cert=True):
-    site = Site(hostname, no_tls=no_tls, auto_tls=auto_tls, tls_only=tls_only, auto_cert=auto_cert)
+def redirect(hostname, target_url, *, log_name=None, no_tls=False, permanent=False, auto_tls=True, tls_only=False, auto_cert=True):
+    site = Site(hostname, no_tls=no_tls, auto_tls=auto_tls, tls_only=tls_only, auto_cert=auto_cert, log_name=log_name)
     site.redirect(to=target_url, permanent=permanent)
 
 def _find_cert(hostname):

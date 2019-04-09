@@ -3,6 +3,7 @@ proxy = '''proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection $connection_upgrade;
 proxy_http_version 1.1;
 proxy_read_timeout 900;
+proxy_send_timeout 120;
 
 #proxy_ssl_server_name on;
 proxy_set_header X-Real-IP  $remote_addr;
@@ -38,7 +39,11 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    access_log /var/log/nginx/access.log;
+    log_format main '$remote_addr - $remote_user [$time_local] "$host" "$request" '
+            '$status $body_bytes_sent "$http_referer" '
+            '"$http_user_agent" $request_time';
+
+    access_log /var/log/nginx/access.log main;
     error_log /var/log/nginx/error.log;
 
     # gzip on;
